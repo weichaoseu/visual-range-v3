@@ -1,0 +1,24 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no">
+<title>视觉测距 · 目标端（标记）</title>
+<style>
+  html,body{ margin:0; height:100%; background:#000; overflow:hidden; }
+  #wrap{ position:fixed; inset:0; display:flex; align-items:center; justify-content:center; }
+  #marker{ width:min(100vw,100vh); height:min(100vw,100vh); background:#ffffff; }
+  #hint{ position:fixed; bottom:0; left:0; right:0; text-align:center; color:#fff; background:rgba(0,0,0,.75); font-size:13px; padding:10px; font-family:sans-serif; line-height:1.6; }
+</style>
+</head>
+<body>
+  <div id="wrap"><div id="marker"></div></div>
+  <div id="hint">
+    正方形白色标记 · 边长 = 屏幕短边（宽度），横竖拿都一样<br>
+    测量端请填屏幕短边的物理宽度（约 70mm，用尺量更准）
+  </div>
+  <script>
+    if (navigator.wakeLock){ navigator.wakeLock.request('screen').catch(()=>{}); }
+  </script>
+</body>
+</html>
