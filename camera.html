@@ -98,25 +98,63 @@
     startCam(facing === 'environment' ? 'user' : 'environment');
   }
 
+  // 自适应阈值(Otsu) + 从最亮像素 flood-fill 找最大亮区域（抗亮度/曝光变化）
+  function detectMarker(d, W, H){
+    // 1. Otsu 求阈值
+    const hist = new Uint32Array(256);
+    for (let i=0; i<d.length; i+=4){
+      hist[(d[i]+d[i+1]+d[i+2])/3 | 0]++;
+    }
+    const total = W*H;
+    let sum=0;
+    for (let t=0; t<256; t++) sum += t*hist[t];
+    let sumB=0, wB=0, maxVar=0, thr=128;
+    for (let t=0; t<256; t++){
+      wB += hist[t];
+      if (wB===0) continue;
+      const wF = total-wB;
+      if (wF===0) break;
+      sumB += t*hist[t];
+      const mB=sumB/wB, mF=(sum-sumB)/wF;
+      const b=wB*wF*(mB-mF)*(mB-mF);
+      if (b>maxVar){ maxVar=b; thr=t; }
+    }
+    // 2. 亮度数组 + 最亮像素种子
+    const lum = new Uint8Array(W*H);
+    let seedIdx=-1, maxLum=0;
+    for (let i=0; i<d.length; i+=4){
+      const v=(d[i]+d[i+1]+d[i+2])/3 | 0;
+      lum[i>>2]=v;
+      if (v>maxLum){ maxLum=v; seedIdx=i>>2; }
+    }
+    if (seedIdx<0) return null;
+    // 3. flood-fill 连通亮区
+    const visited = new Uint8Array(W*H);
+    const stack = [seedIdx];
+    visited[seedIdx]=1;
+    let minX=W, maxX=-1, minY=H, maxY=-1, count=0;
+    while (stack.length){
+      const p=stack.pop();
+      const x=p%W, y=(p/W)|0;
+      if (x<minX) minX=x; if (x>maxX) maxX=x;
+      if (y<minY) minY=y; if (y>maxY) maxY=y;
+      count++;
+      if (x>0 && !visited[p-1] && lum[p-1]>thr){ visited[p-1]=1; stack.push(p-1); }
+      if (x<W-1 && !visited[p+1] && lum[p+1]>thr){ visited[p+1]=1; stack.push(p+1); }
+      if (y>0 && !visited[p-W] && lum[p-W]>thr){ visited[p-W]=1; stack.push(p-W); }
+      if (y<H-1 && !visited[p+W] && lum[p+W]>thr){ visited[p+W]=1; stack.push(p+W); }
+    }
+    return { w: maxX-minX, h: maxY-minY, count };
+  }
+
   function loop(){
     if (camOn && video.readyState >= 2){
       ctx.drawImage(video, 0, 0, CW, CH);
       const img = ctx.getImageData(0, 0, CW, CH);
       const d = img.data;
-      let minX=CW, maxX=-1, minY=CH, maxY=-1, count=0;
-      for (let i=0; i<d.length; i+=4){
-        const r=d[i], g=d[i+1], b=d[i+2];
-        if ((r+g+b)/3 > 140){   // 亮度检测：白色方块
-          const x = (i>>2) % CW;
-          const y = (i>>2) / CW | 0;
-          if (x<minX) minX=x; if (x>maxX) maxX=x;
-          if (y<minY) minY=y; if (y>maxY) maxY=y;
-          count++;
-        }
-      }
-      const w = maxX - minX, h = maxY - minY;
-      if (count > 500 && w > 15 && h > 15 && w > h*0.4 && w < h*2.5){
-        lastWidthPx = w;
+      const m = detectMarker(d, CW, CH);
+      if (m && m.count > 500 && m.w > 15 && m.h > 15 && m.w > m.h*0.4 && m.w < m.h*2.5){
+        lastWidthPx = m.w;
         const physicalMm = parseFloat(mmInput.value);
         if (focalPx && physicalMm > 0){
           const distCm = physicalMm * focalPx / lastWidthPx / 10;
